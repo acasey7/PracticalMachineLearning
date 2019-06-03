@@ -1,0 +1,129 @@
+---
+title: "Prediction Assignment"
+author: "Andrew Casey"
+output: html_notebook
+---
+
+#Neccessary Libraries
+```{r}
+remove(list = ls())
+library(caret)
+library(rattle)
+library(rpart)
+library(corrplot)
+library(rpart.plot)
+library(RColorBrewer)
+library(randomForest)
+library(gbm)
+```
+
+#Importing Data
+```{r}
+Training <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"),header=TRUE)
+Testing <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"),header=TRUE)
+
+```
+
+#Cleaning Data
+```{r}
+Training<- Training[, colSums(is.na(Training)) == 0]
+Testing <- Testing[, colSums(is.na(Testing)) == 0]
+
+ColumnsRemoved <- which(colSums(is.na(Training) |Training=="")>0.9*dim(Training)[1]) 
+CleanTraining <- Training[,-ColumnsRemoved]
+CleanTraining <- Training[,-c(1:7)]
+
+ColumnsRemoved <- which(colSums(is.na(Testing) |Testing=="")>0.9*dim(Testing)[1]) 
+CleanTesting <- Testing[,-ColumnsRemoved]
+CleanTesting <- CleanTesting[,-c(1:7)]
+
+```
+
+#Creating part of Training Dataset
+```{r}
+set.seed(1234)
+inTraining1 <- createDataPartition(CleanTraining$classe, p=0.75, list=FALSE)
+Training1 <- CleanTraining[inTraining1,]
+Testing1 <- CleanTraining[-inTraining1,]
+ZeroVariance <- nearZeroVar(CleanTraining)
+CleanTraining <- CleanTraining[, -ZeroVariance]
+CleanTesting <- CleanTesting[, -ZeroVariance]
+```
+
+```{r}
+cor_mat <- cor(CleanTraining[, -53])
+corrplot(cor_mat, order = "FPC", method = "color", type = "upper", 
+         tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+```
+
+
+#Classification Tree Training
+```{r}
+set.seed(12345)
+decisionTreeMod1 <- rpart(classe ~ ., data=CleanTraining, method="class")
+fancyRpartPlot(decisionTreeMod1)
+```
+
+```{r}
+highlyCorrelated = findCorrelation(cor_mat, cutoff=0.75)
+```
+
+```{r}
+names(CleanTraining)[highlyCorrelated]
+```
+
+
+```{r}
+predTreeMod1 <- predict(decTreeMod1, CleanTesting, type = "class")
+CMtree <- confusionMatrix(predTreeMod1, CleanTesting$classe)
+CMtree
+```
+
+```{r}
+plot(CMtree$table, col = CMtree$byClass, 
+     main = paste("Decision Tree - Accuracy =", round(CMtree$overall['Accuracy'], 4)))
+```
+
+
+#Random Forests Training
+```{r}
+conRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modRF1 <- train(classe ~ ., data=CleanTraining, method="rf", trControl=conRF)
+modRF1$finalModel
+```
+
+```{r}
+predRF1 <- predict(modRF1, newdata=CleanTesting)
+cmrf <- confusionMatrix(predRF1, CleanTesting$classe)
+cmrf
+```
+
+```{r}
+plot(modRF1)
+```
+
+```{r}
+plot(cmrf$table, col = cmrf$byClass, main = paste("Random Forest Confusion Matrix: Accuracy =", round(cmrf$overall['Accuracy'], 4)))
+```
+
+
+
+#Gradient Boosting Method Training
+```{r}
+set.seed(12345)
+GBMcontrol <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+GBMmod  <- train(classe ~ ., data=CleanTraining, method = "gbm", trControl = GBMcontrol, verbose = FALSE)
+GBMmod$finalModel
+```
+
+```{r}
+print(GBMmod)
+```
+
+```{r}
+predGBM <- predict(GBMmod, newdata=CleanTraining)
+GBMcm <- confusionMatrix(predGBM, CleanTraining$classe)
+GBMcm
+```
+
+
